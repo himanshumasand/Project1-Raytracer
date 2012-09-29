@@ -72,6 +72,167 @@ __host__ __device__ glm::vec3 getSignOfRay(ray r){
 //Cube intersection test, return -1 if no intersection, otherwise, distance to intersection
 __host__ __device__  float boxIntersectionTest(staticGeom box, ray r, glm::vec3& intersectionPoint, glm::vec3& normal){
 
+	glm::vec3 ro = multiplyMV(box.inverseTransform, glm::vec4(r.origin,1.0f));
+	glm::vec3 rd = glm::normalize(multiplyMV(box.inverseTransform, glm::vec4(r.direction,0.0f)));
+
+	ray rt; rt.origin = ro; rt.direction = rd;
+
+	glm::vec3 bl, bh;
+	bl = glm::vec3(-0.5, -0.5, -0.5);
+	bh = glm::vec3(0.5, 0.5, 0.5);
+
+	double tnear, tfar, t1, t2, temp;
+	tnear = -99999.0;
+	tfar = 99999.0;
+
+	if(abs(rt.direction.x) <= 0.001 && (rt.origin.x < bl.x || rt.origin.x > bh.x))
+		return -1;
+
+	else
+	{
+		t1 = (bl.x - rt.origin.x)/rt.direction.x;
+		t2 = (bh.x - rt.origin.x)/rt.direction.x;
+
+		if(t1 > t2)
+		{
+			temp = t1;
+			t1 = t2;
+			t2 = temp;
+		}
+
+		if(t1 > tnear)
+			tnear = t1;
+
+		if(t2 < tfar)
+			tfar = t2;
+
+		if(tnear > tfar)
+			return -1;
+
+		if(tfar < 0.001)
+			return -1;
+	}
+
+	if(abs(rt.direction.y) <= 0.001 && (rt.origin.y < bl.y || rt.origin.y > bh.y))
+		return -1;
+
+	else
+	{
+		t1 = (bl.y - rt.origin.y)/rt.direction.y;
+		t2 = (bh.y - rt.origin.y)/rt.direction.y;
+
+		if(t1 > t2)
+		{
+			temp = t1;
+			t1 = t2;
+			t2 = temp;
+		}
+
+		if(t1 > tnear)
+			tnear = t1;
+
+		if(t2 < tfar)
+			tfar = t2;
+
+		if(tnear > tfar)
+			return -1;
+
+		if(tfar < 0.001)
+			return -1;
+	}
+
+	if(abs(rt.direction.z) <= 0.001 && (rt.origin.z < bl.z || rt.origin.z > bh.z))
+		return -1;
+
+	else
+	{
+		t1 = (bl.z - rt.origin.z)/rt.direction.z;
+		t2 = (bh.z - rt.origin.z)/rt.direction.z;
+
+		if(t1 > t2)
+		{
+			temp = t1;
+			t1 = t2;
+			t2 = temp;
+		}
+
+		if(t1 > tnear)
+			tnear = t1;
+
+		if(t2 < tfar)
+			tfar = t2;
+
+		if(tnear > tfar)
+			return -1;
+
+		if(tfar < 0.001)
+			return -1;
+	}
+
+	if(abs(tnear) < 0.001)
+		return -1;
+
+	if(tnear < tfar)
+	{
+		glm::vec3 point = glm::vec3(rt.origin.x + tnear*rt.direction.x, rt.origin.y + tnear*rt.direction.y, rt.origin.z + tnear*rt.direction.z);
+		
+		if(fabs( point.x - 0.5 ) < 0.001)
+			normal = glm::vec3(1.0, 0.0, 0.0);
+		
+		if(fabs( point.x + 0.5 ) < 0.001)
+			normal = glm::vec3(-1.0, 0.0, 0.0);
+		
+		if(fabs( point.y - 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, 1.0, 0.0);
+		
+		if(fabs( point.y + 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, -1.0, 0.0);
+		
+		if(fabs( point.z - 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, 0.0, 1.0);
+		
+		if(fabs( point.z + 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, 0.0, -1.0);
+
+		normal =  glm::normalize(multiplyMV(box.transform, glm::vec4(normal, 0.0)));
+		//normal = glm::normalize(normal);
+		glm::vec3 realIntersectionPoint = multiplyMV(box.transform, glm::vec4(getPointOnRay(rt, tnear), 1.0));
+		intersectionPoint = realIntersectionPoint;
+		return glm::length(r.origin - realIntersectionPoint);
+	}
+	
+	if(abs(tfar) < 0.001)
+		return -1;
+
+	if(tfar > 0.001)
+	{
+		glm::vec3 point = glm::vec3(rt.origin.x + tfar*rt.direction.x, rt.origin.y + tfar*rt.direction.y, rt.origin.z + tfar*rt.direction.z);
+		
+		if(fabs( point.x - 0.5 ) < 0.001)
+			normal = glm::vec3(1.0, 0.0, 0.0);
+		
+		if(fabs( point.x + 0.5 ) < 0.001)
+			normal = glm::vec3(-1.0, 0.0, 0.0);
+		
+		if(fabs( point.y - 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, 1.0, 0.0);
+		
+		if(fabs( point.y + 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, -1.0, 0.0);
+		
+		if(fabs( point.z - 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, 0.0, 1.0);
+		
+		if(fabs( point.z + 0.5 ) < 0.001)
+			normal = glm::vec3(0.0, 0.0, -1.0);
+		
+		normal =  glm::normalize(multiplyMV(box.transform, glm::vec4(normal, 0.0)));
+		//normal = glm::normalize(normal);
+		glm::vec3 realIntersectionPoint = multiplyMV(box.transform, glm::vec4(getPointOnRay(rt, tfar), 1.0));
+		intersectionPoint = realIntersectionPoint;
+		return glm::length(r.origin - realIntersectionPoint);
+	}
+
     return -1;
 }
 
