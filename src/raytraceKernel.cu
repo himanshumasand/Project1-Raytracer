@@ -114,99 +114,110 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
   int x = (blockIdx.x * blockDim.x) + threadIdx.x;
   int y = (blockIdx.y * blockDim.y) + threadIdx.y;
   int index = resolution.x * resolution.y - ( x + (y * resolution.x));
+  int currentDepth = 1;
   float dist, distLight;
   float minDist = 99999, minDistLight = 99999;
-  int indexOfGeom;
+  int indexOfGeom, indexOfLight;
   ray raycast;
   glm::vec3 intersectionPoint, normal;
 
-  glm::vec3 lpos;
+  glm::vec3 lightPosition, lightColor;
+  float lightEmittance;
   
   //gets the position of the last defined light source
   for(int i = 0; i < numberOfGeoms; i++)
   {
-	  if(mats[geoms[i].materialid].emittance > 1)
+	  if(mats[geoms[i].materialid].emittance > 0)
 	  {
-		  lpos = geoms[i].translation;
+		  lightPosition = geoms[i].translation;
+		  indexOfLight = i;
 	  }
   }
 
-  //lpos = glm::vec3(0,9,0);
+  lightColor = mats[geoms[indexOfLight].materialid].color;
+  lightEmittance = mats[geoms[indexOfLight].materialid].emittance;
+
+  //lightPosition = glm::vec3(0,8,5);
   glm::vec3 tempColor, lightDir;
-  float kAmbient = 0.4f, kDiffuse = 0.4f;
+  //ambient, diffuse and specular factors
+  float kAmbient = 0.2f, kDiffuse = 0.5f, kSpecular = 0.3f;
 
-  if((x<=resolution.x && y<=resolution.y)){
-
-	  raycast = raycastFromCameraKernel(resolution, time, x, y, cam.position, cam.view, cam.up, cam.fov);
-	  for(int i = 0; i < numberOfGeoms; i++)
-	  {		  
-		  if(geoms[i].type == SPHERE)
-			  dist = sphereIntersectionTest( geoms[i] , raycast, intersectionPoint, normal);
-		  else if(geoms[i].type == CUBE)
-			  dist = boxIntersectionTest( geoms[i], raycast, intersectionPoint, normal);
-
-		  if(dist != -1 && dist < minDist)
-		  {  
-			  minDist = dist;
-			  indexOfGeom = i;
-		  }
-	  }
-
-	  if(minDist == 99999)
+  if((x<=resolution.x && y<=resolution.y))
+  {
+	  while(currentDepth <= rayDepth)
 	  {
-		  colors[index] = glm::vec3(0,0,0);
-	  }
+		  currentDepth++;
+		  raycast = raycastFromCameraKernel(resolution, time, x, y, cam.position, cam.view, cam.up, cam.fov);
+		  for(int i = 0; i < numberOfGeoms; i++)
+		  {		  
+			  if(geoms[i].type == SPHERE)
+				  dist = sphereIntersectionTest( geoms[i] , raycast, intersectionPoint, normal);
+			  else if(geoms[i].type == CUBE)
+				  dist = boxIntersectionTest( geoms[i], raycast, intersectionPoint, normal);
 
-	  else
-	  {
-		  tempColor = mats[geoms[indexOfGeom].materialid].color;
-		  colors[index] = kAmbient * tempColor;
-		  
-		  ray lightRay;
-		  lightDir = lpos - intersectionPoint;
-		  lightDir = glm::normalize(lightDir);
-		  float factor = glm::dot(normal, lightDir);
-		  lightRay.origin = intersectionPoint;
-		  lightRay.direction = lightDir;
-		  distLight = -1;
-		  minDistLight = 99999;
-		  
-		 // if(geoms[indexOfGeom].type == SPHERE)
-			//  distLight = sphereIntersectionTest( geoms[indexOfGeom] , lightRay, intersectionPoint, normal);
-		 // else if(geoms[indexOfGeom].type == CUBE)
-			//  distLight = boxIntersectionTest( geoms[indexOfGeom], lightRay, intersectionPoint, normal);
-
-		 // if(distLight != -1 && distLight < minDistLight)
-			//{  
-			//	minDistLight = distLight;
-			//}
-
-		  for(int i = 0; i < numberOfGeoms - 1; i++)
-		  {
-			  if(i != 2)
-			  {
-				  if(geoms[i].type == SPHERE)
-					  distLight = sphereIntersectionTest( geoms[i] , lightRay, intersectionPoint, normal);
-				  else if(geoms[i].type == CUBE)
-					  distLight = boxIntersectionTest( geoms[i], lightRay, intersectionPoint, normal);
-
-				  if(distLight != -1 && distLight < minDistLight)
-				  {  
-					  minDistLight = distLight;
-				  }
+			  if(dist != -1 && dist < minDist)
+			  {  
+				  minDist = dist;
+				  indexOfGeom = i;
 			  }
 		  }
 
-		  if(minDistLight == 99999)
+		  material curMaterial = mats[geoms[indexOfGeom].materialid];
+
+		  if(minDist == 99999)
 		  {
-			  colors[index] += kDiffuse * factor;
+			  colors[index] = glm::vec3(0,0,0);
 		  }
 
-		  //clamp(colors[index].x, 0.0f, 1.0f);
-		  //clamp(colors[index].y, 0.0f, 1.0f);
-		  //clamp(colors[index].z, 0.0f, 1.0f);
+		  else
+		  {
+			  tempColor = curMaterial.color;
+			  colors[index] = kAmbient * tempColor;
+
+			  ray lightRay;
+			  lightDir = lightPosition - intersectionPoint;
+			  lightDir = glm::normalize(lightDir);
+			  normal = glm::normalize(normal);
+			  float factor = glm::dot(normal, lightDir);
+			  lightRay.origin = intersectionPoint;
+			  lightRay.direction = lightDir;
+
+			  ray reflectedRay;
+			  reflectedRay.direction = lightRay.direction - 2.0f * (normal * glm::dot(lightRay.direction, normal));
+			  reflectedRay.origin = intersectionPoint;
+
+			  distLight = -1;
+			  minDistLight = 99999;
+
+			  for(int i = 0; i < numberOfGeoms; i++)
+			  {
+				  if(i != 2 && i != 8)	//hard coded to ignore roof cube intersection during light ray cast
+				  {
+					  if(geoms[i].type == SPHERE)
+						  distLight = sphereIntersectionTest( geoms[i] , lightRay, intersectionPoint, normal);
+					  else if(geoms[i].type == CUBE)
+						  distLight = boxIntersectionTest( geoms[i], lightRay, intersectionPoint, normal);
+
+					  if(distLight != -1 && distLight < minDistLight)
+					  {  
+						  minDistLight = distLight;
+					  }
+				  }
+			  }
+
+			  if(minDistLight == 99999)
+			  {
+				  colors[index] += lightEmittance * lightColor * kDiffuse * factor * tempColor;
+				  if(curMaterial.specularExponent > 0)
+					  colors[index] += kSpecular * lightEmittance * curMaterial.specularColor * pow(abs(glm::dot(glm::normalize(reflectedRay.direction), glm::normalize(raycast.direction))), curMaterial.specularExponent);
+			  }
+
+			  clamp(colors[index].x, 0.0f, 1.0f);
+			  clamp(colors[index].y, 0.0f, 1.0f);
+			  clamp(colors[index].z, 0.0f, 1.0f);
+		  }
+		  //colors[index] = glm::vec3(1,0,0);// generateRandomNumberFromThread(resolution, time, x, y);
 	  }
-      //colors[index] = glm::vec3(1,0,0);// generateRandomNumberFromThread(resolution, time, x, y);
    }
 }
 
@@ -238,6 +249,7 @@ void cudaRaytraceCore(uchar4* PBOpos, camera* renderCam, int frame, int iteratio
     newStaticGeom.scale = geoms[i].scales[frame];
     newStaticGeom.transform = geoms[i].transforms[frame];
     newStaticGeom.inverseTransform = geoms[i].inverseTransforms[frame];
+	newStaticGeom.inverseTranspose = geoms[i].inverseTranspose[frame];
     geomList[i] = newStaticGeom;
   }
   

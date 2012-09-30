@@ -194,7 +194,7 @@ __host__ __device__  float boxIntersectionTest(staticGeom box, ray r, glm::vec3&
 		if(fabs( point.z + 0.5 ) < 0.001)
 			normal = glm::vec3(0.0, 0.0, -1.0);
 
-		normal =  glm::normalize(multiplyMV(box.transform, glm::vec4(normal, 0.0)));
+		normal =  glm::normalize(multiplyMV(box.inverseTranspose, glm::vec4(normal, 0.0)));
 		//normal = glm::normalize(normal);
 		glm::vec3 realIntersectionPoint = multiplyMV(box.transform, glm::vec4(getPointOnRay(rt, tnear), 1.0));
 		intersectionPoint = realIntersectionPoint;
@@ -226,7 +226,7 @@ __host__ __device__  float boxIntersectionTest(staticGeom box, ray r, glm::vec3&
 		if(fabs( point.z + 0.5 ) < 0.001)
 			normal = glm::vec3(0.0, 0.0, -1.0);
 		
-		normal =  glm::normalize(multiplyMV(box.transform, glm::vec4(normal, 0.0)));
+		normal =  glm::normalize(multiplyMV(box.inverseTranspose, glm::vec4(normal, 0.0)));
 		//normal = glm::normalize(normal);
 		glm::vec3 realIntersectionPoint = multiplyMV(box.transform, glm::vec4(getPointOnRay(rt, tfar), 1.0));
 		intersectionPoint = realIntersectionPoint;
