@@ -43,9 +43,6 @@ __host__ __device__ ray raycastFromCameraKernel(glm::vec2 resolution, float time
 	ray r;
 	glm::vec3 a, b, m, h, v, p;
 	
-	//r.origin = glm::vec3(0,0,0);
-	//r.direction = glm::vec3(0,0,-1);
-	
 	a = glm::cross(view, up);
 	b = glm::cross(a, view);
 	m = eye + view;
@@ -53,13 +50,39 @@ __host__ __device__ ray raycastFromCameraKernel(glm::vec2 resolution, float time
 	v.y = 0.5f; 
 
 	p = glm::vec3((float)(m.x + ((((2.0*x)/(resolution.x-1))-1)*h.x)+((((2.0*y)/(resolution.y-1))-1)*v.x)), (float)(m.y + ((((2.0*x)/(resolution.x-1))-1)*h.y)+((((2.0*y)/(resolution.y-1))-1)*v.y)), (float)(m.z + ((((2.0*x)/(resolution.x-1))-1)*h.z)+((((2.0*y)/(resolution.y-1))-1)*v.z)));
-		
+
 	r.origin = eye;
 	r.direction = p - eye;
 	float mag = (p - eye).length();
 	r.direction = r.direction / mag;
-	
+
+	//forDOF
+	//float apertureSize, focalLength = 857, numOfRays = 9;
+	//glm::vec3 focalPoint;
+
+	//float scdist=(resolution.y/2)/tan(fov.y *22 / 7 / 180);
+	//glm::vec3 pixelPos = glm::vec3(x, y, scdist);
+	//float pixelDistance = (pixelPos - eye).length();
+
+	//focalPoint = eye + (pixelDistance / (scdist / (scdist + focalLength))) * (pixelPos - eye) / pixelDistance;
+
+	////ray dofRays[9];
+	//dofRays[0] = r;
+	//dofRays[1].origin = pixelPos + glm::vec3(1,0,0);
+	//dofRays[2].origin = pixelPos + glm::vec3(-1,0,0);
+	//dofRays[3].origin = pixelPos + glm::vec3(0,1,0);
+	//dofRays[4].origin = pixelPos + glm::vec3(0,-1,0);
+	//dofRays[5].origin = pixelPos + glm::vec3(1,1,0);
+	//dofRays[6].origin = pixelPos + glm::vec3(-1,1,0);
+	//dofRays[7].origin = pixelPos + glm::vec3(1,1,0);
+	//dofRays[8].origin = pixelPos + glm::vec3(-1,-1,0);
+
+	//for(int i = 0; i < 5; i++)
+	//	dofRays[i].direction = focalPoint - dofRays[i].origin;
+	//return dofRays;
+
 	return r;
+	
 }
 
 //Kernel that blacks out a given image buffer
@@ -114,11 +137,16 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
   int x = (blockIdx.x * blockDim.x) + threadIdx.x;
   int y = (blockIdx.y * blockDim.y) + threadIdx.y;
   int index = resolution.x * resolution.y - ( x + (y * resolution.x));
-  int currentDepth = 1;
+  int currentDepth = 0;
   float dist, distLight;
   float minDist = 99999, minDistLight = 99999;
   int indexOfGeom, indexOfLight;
-  ray raycast;
+
+  const int numOfSamples = 9;
+  ray currentRay[numOfSamples], cachedRay[numOfSamples];
+  glm::vec3 colorAtDepth[10];
+  material materialAtDepth[10];
+
   glm::vec3 intersectionPoint, normal;
 
   glm::vec3 lightPosition, lightColor;
@@ -138,86 +166,142 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
   lightEmittance = mats[geoms[indexOfLight].materialid].emittance;
 
   //lightPosition = glm::vec3(0,8,5);
-  glm::vec3 tempColor, lightDir;
+  glm::vec3 lightDir;
   //ambient, diffuse and specular factors
   float kAmbient = 0.2f, kDiffuse = 0.5f, kSpecular = 0.3f;
 
+  bool hitDiffuse = false;
+
   if((x<=resolution.x && y<=resolution.y))
   {
-	  while(currentDepth <= rayDepth)
+	  currentRay[0] = raycastFromCameraKernel(resolution, time, x, y, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[1] = raycastFromCameraKernel(resolution, time, x-1.0f, y, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[2] = raycastFromCameraKernel(resolution, time, x+1.0f, y, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[3] = raycastFromCameraKernel(resolution, time, x, y-1.0f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[4] = raycastFromCameraKernel(resolution, time, x, y+1.0f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[5] = raycastFromCameraKernel(resolution, time, x-1.0f, y-1.0f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[6] = raycastFromCameraKernel(resolution, time, x+1.0f, y-1.0f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[7] = raycastFromCameraKernel(resolution, time, x-1.0f, y+1.0f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[8] = raycastFromCameraKernel(resolution, time, x+1.0f, y+1.0f, cam.position, cam.view, cam.up, cam.fov);
+
+
+	  colors[index] = glm::vec3(0,0,0);
+	  
+	  while(currentDepth < rayDepth && hitDiffuse == false)		//in the beginning, currentDepth = 0
 	  {
-		  currentDepth++;
-		  raycast = raycastFromCameraKernel(resolution, time, x, y, cam.position, cam.view, cam.up, cam.fov);
-		  for(int i = 0; i < numberOfGeoms; i++)
-		  {		  
-			  if(geoms[i].type == SPHERE)
-				  dist = sphereIntersectionTest( geoms[i] , raycast, intersectionPoint, normal);
-			  else if(geoms[i].type == CUBE)
-				  dist = boxIntersectionTest( geoms[i], raycast, intersectionPoint, normal);
-
-			  if(dist != -1 && dist < minDist)
-			  {  
-				  minDist = dist;
-				  indexOfGeom = i;
-			  }
-		  }
-
-		  material curMaterial = mats[geoms[indexOfGeom].materialid];
-
-		  if(minDist == 99999)
+		  colorAtDepth[currentDepth] = glm::vec3(0,0,0);
+		  
+		  for(int ry = 0; ry < numOfSamples; ry++)
 		  {
-			  colors[index] = glm::vec3(0,0,0);
-		  }
-
-		  else
-		  {
-			  tempColor = curMaterial.color;
-			  colors[index] = kAmbient * tempColor;
-
-			  ray lightRay;
-			  lightDir = lightPosition - intersectionPoint;
-			  lightDir = glm::normalize(lightDir);
-			  normal = glm::normalize(normal);
-			  float factor = glm::dot(normal, lightDir);
-			  lightRay.origin = intersectionPoint;
-			  lightRay.direction = lightDir;
-
-			  ray reflectedRay;
-			  reflectedRay.direction = lightRay.direction - 2.0f * (normal * glm::dot(lightRay.direction, normal));
-			  reflectedRay.origin = intersectionPoint;
-
-			  distLight = -1;
-			  minDistLight = 99999;
-
+		  
 			  for(int i = 0; i < numberOfGeoms; i++)
-			  {
-				  if(i != 2 && i != 8)	//hard coded to ignore roof cube intersection during light ray cast
-				  {
-					  if(geoms[i].type == SPHERE)
-						  distLight = sphereIntersectionTest( geoms[i] , lightRay, intersectionPoint, normal);
-					  else if(geoms[i].type == CUBE)
-						  distLight = boxIntersectionTest( geoms[i], lightRay, intersectionPoint, normal);
+			  {		  
+				  if(geoms[i].type == SPHERE)
+					  dist = sphereIntersectionTest( geoms[i] , currentRay[ry], intersectionPoint, normal);
+				  else if(geoms[i].type == CUBE)
+					  dist = boxIntersectionTest( geoms[i], currentRay[ry], intersectionPoint, normal);
 
-					  if(distLight != -1 && distLight < minDistLight)
-					  {  
-						  minDistLight = distLight;
-					  }
+				  if(dist != -1 && dist < minDist)
+				  {  
+					  minDist = dist;
+					  indexOfGeom = i;
 				  }
 			  }
 
-			  if(minDistLight == 99999)
+			  //material curMaterial = mats[geoms[indexOfGeom].materialid];
+
+			  if(minDist == 99999)
 			  {
-				  colors[index] += lightEmittance * lightColor * kDiffuse * factor * tempColor;
-				  if(curMaterial.specularExponent > 0)
-					  colors[index] += kSpecular * lightEmittance * curMaterial.specularColor * pow(abs(glm::dot(glm::normalize(reflectedRay.direction), glm::normalize(raycast.direction))), curMaterial.specularExponent);
+				  colorAtDepth[currentDepth] += glm::vec3(0,0,0);
 			  }
 
-			  clamp(colors[index].x, 0.0f, 1.0f);
-			  clamp(colors[index].y, 0.0f, 1.0f);
-			  clamp(colors[index].z, 0.0f, 1.0f);
-		  }
-		  //colors[index] = glm::vec3(1,0,0);// generateRandomNumberFromThread(resolution, time, x, y);
+			  else
+			  {
+				  materialAtDepth[currentDepth] = mats[geoms[indexOfGeom].materialid];
+				  material curMaterial = mats[geoms[indexOfGeom].materialid];
+				  colorAtDepth[currentDepth] += kAmbient * curMaterial.color;
+
+				  if(curMaterial.hasReflective > 0)
+				  {
+					  normal = glm::normalize(normal);
+					  cachedRay[ry].direction = currentRay[ry].direction - 2.0f * (normal * glm::dot(currentRay[ry].direction, normal));
+					  cachedRay[ry].direction = glm::normalize(cachedRay[ry].direction);
+					  cachedRay[ry].origin = intersectionPoint;
+				  }
+
+				  else
+					  hitDiffuse = true;
+
+				  ray lightRay;
+				  lightDir = lightPosition - intersectionPoint;
+				  lightDir = glm::normalize(lightDir);
+				  normal = glm::normalize(normal);
+				  float factor = glm::dot(normal, lightDir);
+				  lightRay.origin = intersectionPoint;
+				  lightRay.direction = lightDir;
+
+				  ray reflectedLightRay;
+				  reflectedLightRay.direction = lightRay.direction - 2.0f * (normal * glm::dot(lightRay.direction, normal));
+				  reflectedLightRay.direction = glm::normalize(reflectedLightRay.direction);
+				  reflectedLightRay.origin = intersectionPoint;
+
+				  distLight = -1;
+				  minDistLight = 99999;
+
+				  for(int i = 0; i < numberOfGeoms; i++)
+				  {
+					  if(i != 2 && i != 8)	//hard coded to ignore roof cube intersection during light ray cast
+					  {
+						  if(geoms[i].type == SPHERE)
+							  distLight = sphereIntersectionTest( geoms[i] , lightRay, intersectionPoint, normal);
+						  else if(geoms[i].type == CUBE)
+							  distLight = boxIntersectionTest( geoms[i], lightRay, intersectionPoint, normal);
+
+						  if(distLight != -1 && distLight < minDistLight)
+						  {  
+							  minDistLight = distLight;
+						  }
+					  }
+				  }
+
+				  if(minDistLight == 99999)
+				  {
+					  colorAtDepth[currentDepth] += lightEmittance * lightColor * kDiffuse * factor * curMaterial.color;
+					  if(curMaterial.specularExponent > 0)
+						  colorAtDepth[currentDepth] += kSpecular * lightEmittance * curMaterial.specularColor * pow(abs(glm::dot(glm::normalize(reflectedLightRay.direction), glm::normalize(currentRay[ry].direction))), curMaterial.specularExponent);
+				  }
+
+			  }
+
+			  //colors[index] += mats[geoms[indexOfGeom].materialid].hasReflective * colors[index];
+
+			  currentRay[ry] = cachedRay[ry];
+		  }//end for loop for rays
+
+		  //currentRay = cachedRay;
+		  colorAtDepth[currentDepth] = colorAtDepth[currentDepth] / (float)numOfSamples;
+		  currentDepth++;
+		  
+	  }//end while
+
+	  for(int i = rayDepth - 1; i > 0; i--)
+	  {
+		  //if(i == currentDepth-1)
+		  /*colorAtDepth[i-1]*/ colors[index] += materialAtDepth[i-1].hasReflective * colorAtDepth[i];
 	  }
+
+	  colors[index] += colorAtDepth[0];
+
+//	  for(int i = 0; i < rayDepth; i++)
+//		  colors[index] += colorAtDepth[i];
+
+	  //average colors if multiple sampling
+
+	  //colors[index] = colors[index] / 5.0f;
+
+	  clamp(colors[index].x, 0.0f, 1.0f);
+	  clamp(colors[index].y, 0.0f, 1.0f);
+	  clamp(colors[index].z, 0.0f, 1.0f);
    }
 }
 
