@@ -165,7 +165,7 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
   lightColor = mats[geoms[indexOfLight].materialid].color;
   lightEmittance = mats[geoms[indexOfLight].materialid].emittance;
 
-  //lightPosition = glm::vec3(0,8,5);
+  lightPosition = glm::vec3(0,10,0);
   glm::vec3 lightDir;
   //ambient, diffuse and specular factors
   float kAmbient = 0.2f, kDiffuse = 0.5f, kSpecular = 0.3f;
@@ -175,14 +175,14 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
   if((x<=resolution.x && y<=resolution.y))
   {
 	  currentRay[0] = raycastFromCameraKernel(resolution, time, x, y, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[1] = raycastFromCameraKernel(resolution, time, x-1.0f, y, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[2] = raycastFromCameraKernel(resolution, time, x+1.0f, y, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[3] = raycastFromCameraKernel(resolution, time, x, y-1.0f, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[4] = raycastFromCameraKernel(resolution, time, x, y+1.0f, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[5] = raycastFromCameraKernel(resolution, time, x-1.0f, y-1.0f, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[6] = raycastFromCameraKernel(resolution, time, x+1.0f, y-1.0f, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[7] = raycastFromCameraKernel(resolution, time, x-1.0f, y+1.0f, cam.position, cam.view, cam.up, cam.fov);
-	  currentRay[8] = raycastFromCameraKernel(resolution, time, x+1.0f, y+1.0f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[1] = raycastFromCameraKernel(resolution, time, x-0.5f, y, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[2] = raycastFromCameraKernel(resolution, time, x+0.5f, y, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[3] = raycastFromCameraKernel(resolution, time, x, y-0.5f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[4] = raycastFromCameraKernel(resolution, time, x, y+0.5f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[5] = raycastFromCameraKernel(resolution, time, x-0.5f, y-0.5f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[6] = raycastFromCameraKernel(resolution, time, x+0.5f, y-0.5f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[7] = raycastFromCameraKernel(resolution, time, x-0.5f, y+0.5f, cam.position, cam.view, cam.up, cam.fov);
+	  currentRay[8] = raycastFromCameraKernel(resolution, time, x+0.5f, y+0.5f, cam.position, cam.view, cam.up, cam.fov);
 
 
 	  colors[index] = glm::vec3(0,0,0);
@@ -190,10 +190,9 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
 	  while(currentDepth < rayDepth && hitDiffuse == false)		//in the beginning, currentDepth = 0
 	  {
 		  colorAtDepth[currentDepth] = glm::vec3(0,0,0);
-		  
+		   
 		  for(int ry = 0; ry < numOfSamples; ry++)
 		  {
-		  
 			  for(int i = 0; i < numberOfGeoms; i++)
 			  {		  
 				  if(geoms[i].type == SPHERE)
@@ -220,7 +219,7 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
 				  materialAtDepth[currentDepth] = mats[geoms[indexOfGeom].materialid];
 				  material curMaterial = mats[geoms[indexOfGeom].materialid];
 				  colorAtDepth[currentDepth] += kAmbient * curMaterial.color;
-
+				  
 				  if(curMaterial.hasReflective > 0)
 				  {
 					  normal = glm::normalize(normal);
@@ -273,12 +272,11 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
 
 			  }
 
-			  //colors[index] += mats[geoms[indexOfGeom].materialid].hasReflective * colors[index];
-
 			  currentRay[ry] = cachedRay[ry];
 		  }//end for loop for rays
 
 		  //currentRay = cachedRay;
+
 		  colorAtDepth[currentDepth] = colorAtDepth[currentDepth] / (float)numOfSamples;
 		  currentDepth++;
 		  
@@ -286,10 +284,8 @@ __global__ void raytraceRay(glm::vec2 resolution, float time, cameraData cam, in
 
 	  for(int i = rayDepth - 1; i > 0; i--)
 	  {
-		  //if(i == currentDepth-1)
-		  /*colorAtDepth[i-1]*/ colors[index] += materialAtDepth[i-1].hasReflective * colorAtDepth[i];
+		  colors[index] += materialAtDepth[i-1].hasReflective * colorAtDepth[i];
 	  }
-
 	  colors[index] += colorAtDepth[0];
 
 //	  for(int i = 0; i < rayDepth; i++)
